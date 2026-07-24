@@ -1,0 +1,22 @@
+{% extends "monitor/base.html" %}
+{% block content %}
+<h2 class="mb-3">Change history — {{ site.name }}</h2>
+<div class="card p-3">
+  <table class="table">
+    <thead><tr><th>Detected at</th><th>Old hash</th><th>New hash</th><th>Notified</th></tr></thead>
+    <tbody>
+      {% for c in changes %}
+      <tr>
+        <td>{{ c.detected_at }}</td>
+        <td><code>{{ c.old_hash|slice:":10" }}…</code></td>
+        <td><code>{{ c.new_hash|slice:":10" }}…</code></td>
+        <td>{% if c.notified %}✅{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-muted">No changes detected yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<a href="{% url 'site_list' %}" class="btn btn-outline-secondary mt-3">Back</a>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "monitor/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">My watched sites</h2>
+  <a href="{% url 'site_create' %}" class="btn btn-dark">+ Watch a site</a>
+</div>
+
+<div class="card p-3">
+  <table class="table align-middle">
+    <thead>
+      <tr><th>Name</th><th>URL</th><th>Frequency</th><th>Last checked</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for site in sites %}
+      <tr>
+        <td>{{ site.name }}</td>
+        <td><a href="{{ site.url }}" target="_blank" class="text-truncate d-inline-block" style="max-width: 250px;">{{ site.url }}</a></td>
+        <td>{{ site.get_check_frequency_minutes_display }}</td>
+        <td>{{ site.last_checked_at|default:"Never" }}</td>
+        <td class="text-end">
+          <a href="{% url 'change_history' site.pk %}" class="btn btn-sm btn-outline-secondary">History</a>
+          <a href="{% url 'site_check_now' site.pk %}" class="btn btn-sm btn-outline-primary">Check now</a>
+          <a href="{% url 'site_delete' site.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-muted">You're not watching any sites yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
