@@ -4,6 +4,20 @@ Watch any webpage (like the IND visa page, or a company's careers page) and
 get an email the moment its content changes. Built with Django + Celery to
 demonstrate background jobs and task scheduling — 100% free to run locally.
 
+## Why I built this
+
+As part of settling in the Netherlands, I found myself manually refreshing
+pages like the IND website over and over, worried I'd miss an update. I
+wanted something to do that watching for me — and it turned into a good
+excuse to learn Celery and background task scheduling properly, instead of
+just polling in a loop.
+
+## Screenshots
+
+<!-- Add your own screenshots here — see "Adding screenshots" below -->
+![Watched sites list](screenshots/site-list.png)
+![Change history](screenshots/change-history.png)
+
 ## Features
 
 - Watch any URL, optionally scoped to a CSS selector (so ads/timestamps don't cause false alerts)
@@ -111,6 +125,35 @@ Free tiers that support Django + Celery + Redis together: [Railway](https://rail
 is the simplest (one-click Redis add-on). You'll run three services: web,
 worker, and beat — Railway/Render let you define each as a separate process
 from the same repo.
+
+## What I learned building this
+
+- Setting up Celery with Django from scratch — broker config, worker
+  processes, and `django-celery-beat` for database-backed periodic scheduling
+- Designing a task (`check_site`) that's safe to retry and idempotent,
+  since background jobs can and do get re-run
+- Extracting meaningful content from HTML with BeautifulSoup and a CSS
+  selector, so noisy parts of a page (ads, view counters) don't create false positives
+- Thinking through the difference between "runs on a schedule" (`beat`) and
+  "actually does the work" (`worker`) as two separate, independently
+  restartable processes
+
+## Adding screenshots
+
+1. Run the app, add a couple of watched sites, and trigger a "Check now" so there's some history to show.
+2. Take screenshots of the site list and change history pages (Ubuntu: `Shift+PrtScn`, or the Screenshot app).
+3. Create a folder for them in the project root:
+   ```bash
+   mkdir screenshots
+   ```
+4. Save them as `site-list.png` and `change-history.png` (or rename the paths in this README to match).
+5. Commit and push:
+   ```bash
+   git add screenshots/
+   git commit -m "Add screenshots"
+   git push
+   ```
+   GitHub renders them automatically once pushed, since the README already references `screenshots/`.
 
 ## License
 
