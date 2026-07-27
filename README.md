@@ -15,8 +15,8 @@ just polling in a loop.
 ## Screenshots
 
 <!-- Add your own screenshots here — see "Adding screenshots" below -->
-![Watched sites list](screenshots/site-list.png)
-![Change history](screenshots/change-history.png)
+![Watched sites list](screenshots/site-list.jpg)
+![Change history](screenshots/change-history.jpg)
 
 ## Features
 
