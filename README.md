@@ -1,51 +1,138 @@
-# 🔎 Website Change Monitor
+# Website Change Monitor
 
-Watch any webpage (like the IND visa page, or a company's careers page) and
-get an email the moment its content changes. Built with Django + Celery to
-demonstrate background jobs and task scheduling — 100% free to run locally.
+[![Tests](https://github.com/mhzrb/website-change-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/mhzrb/website-change-monitor/actions/workflows/ci.yml)
 
-## Why I built this
+A Django-based monitoring service that tracks web pages for meaningful content
+changes and sends email alerts when monitored content is updated.
 
-As part of settling in the Netherlands, I found myself manually refreshing
-pages like the IND website over and over, worried I'd miss an update. I
-wanted something to do that watching for me — and it turned into a good
-excuse to learn Celery and background task scheduling properly, instead of
-just polling in a loop.
+The application uses Celery workers and Redis-backed task queues for background
+checks, `django-celery-beat` for periodic scheduling, BeautifulSoup with optional
+CSS selectors for targeted content extraction, and SHA-256 hashes for efficient
+change detection.
 
 ## Screenshots
 
-<!-- Add your own screenshots here — see "Adding screenshots" below -->
+### Watched sites
+
 ![Watched sites list](screenshots/site-list.jpg)
+
+### Change history
+
 ![Change history](screenshots/change-history.jpg)
+
+## Engineering Highlights
+
+- Django web application for managing monitored URLs and change history
+- Celery worker processes for asynchronous page checks
+- Redis-backed task queue separating web requests from background work
+- Database-backed recurring schedules with `django-celery-beat`
+- Per-site check frequencies with due-time filtering before task dispatch
+- Optional CSS selectors to reduce false positives from noisy page content
+- SHA-256 content hashing for efficient change detection
+- Retry-safe, idempotent site-check tasks
+- Email notifications and persistent change-event history
+- Manual on-demand checks alongside scheduled monitoring
+
+## Why I Built It
+
+I originally built the project after repeatedly checking pages such as Dutch
+immigration updates and company career pages for changes. The goal was to turn
+that manual workflow into a small monitoring system while exploring the
+engineering behind asynchronous background jobs, scheduling, retries, and
+separating web requests from long-running work.
 
 ## Features
 
-- Watch any URL, optionally scoped to a CSS selector (so ads/timestamps don't cause false alerts)
-- Choose a check frequency per site: 15 min / hourly / every 6h / daily
-- Background worker (Celery) fetches and hashes each page's text content
-- Automatic email notification when the content hash changes
-- Full change history log per site
-- Manual "Check now" button for on-demand checks
-- Django admin panel to inspect everything directly
+- Watch any URL and optionally scope monitoring to a CSS selector
+- Choose a check frequency per site: 15 minutes, hourly, every 6 hours, or daily
+- Run page checks asynchronously through Celery workers
+- Detect changes by hashing extracted page content with SHA-256
+- Send an email notification when monitored content changes
+- Keep a persistent change-history log for each site
+- Trigger an immediate check with a manual **Check now** action
+- Inspect monitored sites and events through the Django admin interface
+
+## How It Works
+
+1. A user creates a `WatchedSite` with a URL, optional CSS selector, and check
+   frequency.
+2. Every 15 minutes, Celery Beat triggers `check_all_sites`.
+3. The dispatcher evaluates each site's `check_frequency_minutes` and sends only
+   due sites to the Celery queue.
+4. A worker executes `check_site`, fetches the page, extracts the relevant text,
+   and calculates a SHA-256 hash.
+5. The new hash is compared with the previously stored value.
+6. If the content changed, the application records a `ChangeEvent` and sends an
+   email notification.
+
+## Architecture
+
+```text
+                         ┌──────────────────┐
+                         │   Django web UI  │
+                         │   + admin        │
+                         └────────┬─────────┘
+                                  │
+                                  v
+                         ┌──────────────────┐
+                         │ Application DB   │
+                         │ sites + history  │
+                         └──────────────────┘
+
+Celery Beat
+    │
+    │ periodic dispatch
+    v
+check_all_sites
+    │
+    │ due-site tasks
+    v
+Redis broker ───────▶ Celery worker ───────▶ Target webpage
+                           │                      │
+                           │  extract + hash     │
+                           ◀──────────────────────┘
+                           │
+                           ├──▶ ChangeEvent
+                           └──▶ Email notification
+```
+
+The scheduler and workers are intentionally separate processes. Celery Beat
+decides when checks should be dispatched, while Celery workers perform the
+network and parsing work independently of the Django request cycle.
 
 ## Tech Stack
 
-- Django 5
-- Celery 5 + Redis (task queue + broker)
-- django-celery-beat (periodic task scheduling stored in the database)
-- BeautifulSoup4 (content extraction) + requests (fetching)
-- SQLite (default) + Bootstrap 5
+- Python 3.10+
+- Django 4.2
+- Celery 5
+- Redis
+- `django-celery-beat`
+- BeautifulSoup4
+- `requests`
+- SQLite for local development
+- Bootstrap 5
 
-## Installation
+## Local Development
 
 ### Prerequisites
+
 - Python 3.10+
-- Redis (free, local):
-  ```bash
-  sudo apt update && sudo apt install redis-server
-  sudo systemctl enable --now redis-server
-  redis-cli ping   # should reply: PONG
-  ```
+- Redis
+
+On Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl enable --now redis-server
+redis-cli ping
+```
+
+`redis-cli ping` should return:
+
+```text
+PONG
+```
 
 ### Setup
 
@@ -59,101 +146,127 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# open .env and set SECRET_KEY
+# Set SECRET_KEY and any optional email settings in .env
 
 python manage.py migrate
-python manage.py createsuperuser   # optional, for /admin/
-python manage.py setup_periodic_task   # registers the "check every 15 min" schedule
+python manage.py createsuperuser
+python manage.py setup_periodic_task
 ```
 
-### Running (3 processes, each in its own terminal)
+The superuser step is optional and is only needed for Django admin access.
 
-**Terminal 1 — the web app:**
+### Run the application
+
+Run the web application, worker, and scheduler as separate processes.
+
+**Terminal 1 — Django web app**
+
 ```bash
 python manage.py runserver
 ```
 
-**Terminal 2 — the Celery worker** (actually runs the site-checking tasks):
+**Terminal 2 — Celery worker**
+
 ```bash
 celery -A sitemonitor worker -l info
 ```
 
-**Terminal 3 — the Celery beat scheduler** (triggers checks on schedule):
+**Terminal 3 — Celery Beat scheduler**
+
 ```bash
 celery -A sitemonitor beat -l info
 ```
 
-Open [http://localhost:8000](http://localhost:8000), sign up (with a real
-email if you want to receive alerts — or leave `EMAIL_BACKEND` as console mode
-and just watch the terminal print the "email" instead), and add a site to
-watch.
+Then open:
 
-## How it works
+```text
+http://localhost:8000
+```
 
-1. You add a `WatchedSite` (URL + optional CSS selector + frequency).
-2. Every 15 minutes, Celery Beat fires `check_all_sites`, which looks at
-   each site's `check_frequency_minutes` and only dispatches a real check
-   for sites that are actually due.
-3. `check_site` fetches the page, strips it down to visible text (via the
-   CSS selector if given), and hashes it with SHA-256.
-4. If the hash differs from last time, a `ChangeEvent` is logged and an
-   email goes out.
+## Email Configuration
 
-## Notes on email
+The default Django console email backend prints notifications to the terminal,
+which makes local testing possible without an external email provider.
 
-By default, `EMAIL_BACKEND` is set to the console backend — "sending" an
-email just prints it to the terminal running `runserver`, so you can test
-everything for free with zero setup. To get real emails, set SMTP details in
-`.env` (e.g. a free [Brevo](https://www.brevo.com) account, or a Gmail
-[App Password](https://myaccount.google.com/apppasswords)).
+For real email delivery, configure SMTP credentials through environment
+variables in `.env`. Credentials should never be committed to the repository.
 
 ## Project Structure
 
-```
-sitemonitor/          # Django project settings, Celery app config
+```text
+sitemonitor/
+  # Django project settings and Celery configuration
+
 monitor/
-  models.py            # WatchedSite, ChangeEvent
-  tasks.py              # Celery tasks: check_site, check_all_sites
-  views.py              # CRUD views for watched sites
-  management/commands/setup_periodic_task.py   # one-time schedule setup
-  templates/monitor/    # Bootstrap templates
+  models.py
+  # WatchedSite and ChangeEvent models
+
+  tasks.py
+  # Celery tasks: check_site and check_all_sites
+
+  views.py
+  # CRUD views for monitored sites
+
+  management/commands/setup_periodic_task.py
+  # Periodic schedule registration
+
+  templates/monitor/
+  # Bootstrap templates
 ```
 
-## Deploying
+## Design Trade-offs and Limitations
 
-Free tiers that support Django + Celery + Redis together: [Railway](https://railway.app)
-is the simplest (one-click Redis add-on). You'll run three services: web,
-worker, and beat — Railway/Render let you define each as a separate process
-from the same repo.
+- Page checks use normal HTTP requests, so content that only appears after
+  client-side JavaScript execution may not be visible to the monitor.
+- Change detection is hash-based: it reliably identifies that monitored content
+  changed, but it does not generate a semantic text diff.
+- Dynamic elements such as timestamps, ads, or counters can create noisy
+  changes; CSS selectors can narrow monitoring to the meaningful section.
+- Scheduling uses a 15-minute dispatcher interval and then checks each site's
+  configured frequency, so the system is designed for periodic monitoring
+  rather than sub-minute alerts.
+- SQLite is convenient for local development; a production deployment can use a
+  production-grade database without changing the monitoring architecture.
 
-## What I learned building this
+## Quality Checks
 
-- Setting up Celery with Django from scratch — broker config, worker
-  processes, and `django-celery-beat` for database-backed periodic scheduling
-- Designing a task (`check_site`) that's safe to retry and idempotent,
-  since background jobs can and do get re-run
-- Extracting meaningful content from HTML with BeautifulSoup and a CSS
-  selector, so noisy parts of a page (ads, view counters) don't create false positives
-- Thinking through the difference between "runs on a schedule" (`beat`) and
-  "actually does the work" (`worker`) as two separate, independently
-  restartable processes
+Run the Django system check and test suite locally:
 
-## Adding screenshots
+```bash
+python manage.py check
+python manage.py test monitor.tests -v 2
+```
 
-1. Run the app, add a couple of watched sites, and trigger a "Check now" so there's some history to show.
-2. Take screenshots of the site list and change history pages (Ubuntu: `Shift+PrtScn`, or the Screenshot app).
-3. Create a folder for them in the project root:
-   ```bash
-   mkdir screenshots
-   ```
-4. Save them as `site-list.png` and `change-history.png` (or rename the paths in this README to match).
-5. Commit and push:
-   ```bash
-   git add screenshots/
-   git commit -m "Add screenshots"
-   git push
-   ```
-   GitHub renders them automatically once pushed, since the README already references `screenshots/`.
+GitHub Actions runs the same validation on pushes to `main` and on pull
+requests using Python 3.12.
+
+## Deployment
+
+A deployment needs separate long-running processes for:
+
+- Django web application
+- Celery worker
+- Celery Beat scheduler
+- Redis
+
+The same repository can be deployed to a platform that supports multiple
+process types and a managed or external Redis service.
+
+## Security and Configuration
+
+- Keep `SECRET_KEY`, SMTP credentials, and other secrets in environment variables
+- Do not commit `.env`
+- Treat monitored URLs and notification email addresses as application data
+- Use production Django security settings when exposing the application publicly
+
+## Future Improvements
+
+- Show textual diffs instead of only recording that a page changed
+- Add per-site pause/resume controls
+- Add webhook or Telegram notifications alongside email
+- Support JavaScript-rendered pages through an optional browser-based fetcher
+- Add monitoring metrics for check duration, failures, and queue health
+- Add configurable retry policies for transient network failures
 
 ## License
 
